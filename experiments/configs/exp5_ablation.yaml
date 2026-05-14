@@ -1,0 +1,24 @@
+# EXP-5: Ablation study — contribution of each component
+# Controllers: full scheme, no SVR, fixed R (classic_mpc)
+# Purpose: quantify contribution of SVR filter and R-adaptation separately
+
+scenario_id: EXP-5
+description: "Ablation: full vs no-SVR vs fixed-R; step disturbance scenario"
+n_seeds: 30
+seed_base: 400
+controllers: [full, full_no_svr, classic_mpc]
+n_steps: 300
+
+disturbance:
+  type: step
+  magnitude: 0.03
+  time: 100
+
+noise:
+  enabled: true
+
+reference:
+  beta_fe: 0.650
+  epsilon: 0.920
+
+horizon: {}

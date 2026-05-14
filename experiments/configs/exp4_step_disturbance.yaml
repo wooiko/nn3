@@ -1,0 +1,23 @@
+# EXP-4: Step disturbance in feed composition (alpha_fe)
+# Purpose: assess transient quality under adaptive R(k)
+
+scenario_id: EXP-4
+description: "Step change in alpha_fe at t=100; compare adaptive vs fixed R transient response"
+n_seeds: 30
+seed_base: 300
+controllers: [full, classic_mpc, prototype_mpc]
+n_steps: 300
+
+disturbance:
+  type: step
+  magnitude: 0.03     # [frac]; object_config: step_magnitude
+  time: 100           # step; object_config: step_time
+
+noise:
+  enabled: true
+
+reference:
+  beta_fe: 0.650
+  epsilon: 0.920
+
+horizon: {}

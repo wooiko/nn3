@@ -1,0 +1,34 @@
+# Global configuration — all numeric parameters must have source comments.
+# Format: parameter: value  # source: [author, year, formula/table/page]
+
+# --- Reproducibility ---
+master_seed: 42
+
+# --- MPC horizon ---
+Np: ~   # prediction horizon [steps]  # source: TBD
+Nc: ~   # control horizon [steps]     # source: TBD
+
+# --- Kernel models ---
+kernel: rbf
+kernel_length_scale: ~  # source: TBD
+lambda_reg: ~           # shared λ for KRR and GP  # source: TBD
+window_size: ~          # sliding window length [steps]  # source: TBD
+
+# --- SVR filter ---
+svr_epsilon: ~   # ε-tube half-width   # source: TBD
+svr_C: ~         # regularization      # source: TBD
+svr_gamma: ~     # RBF bandwidth       # source: TBD
+
+# --- R adaptation thresholds ---
+theta1: ~   # nominal → cautious threshold   # source: TBD
+theta2: ~   # cautious → conservative threshold  # source: TBD
+R0: ~       # nominal penalty matrix diagonal  # source: TBD
+alpha_r: ~  # cautious mode scaling coefficient  # source: TBD
+gamma_r: ~  # conservative mode scaling factor   # source: TBD
+hysteresis: false
+
+# --- QP constraints ---
+delta_u_max: ~   # maximum control increment  # source: TBD
+
+# --- Output ---
+results_dir: results/
