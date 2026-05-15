@@ -92,9 +92,8 @@ class ClassicMPC:
         for i in range(Nc):
             du_i = delta_u[i]
             u_cur = u_cur + du_i
-            # Predicted output at step i: y_meas + G @ (sum of Δu up to step i)
-            delta_u_cum_i = cp.sum(delta_u[:i + 1], axis=0)
-            y_hat_i = y_meas + G @ delta_u_cum_i
+            # y(k+i) ≈ y_meas + G @ (Σ_{j=0}^{i} Δu_j); u_cur - u_prev = Σ Δu_j
+            y_hat_i = y_meas + G @ (u_cur - self._u_prev)
             e_i = y_hat_i - y_ref
             cost += cp.quad_form(e_i, self._Q_w) + cp.quad_form(du_i, R)
             constraints += [

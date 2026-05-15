@@ -95,21 +95,21 @@ class MPCController:
         # 1. SVR filter: classify each output channel independently
         is_anomaly = False
         if self._svr_fitted:
-            r_beta = self._svr_beta.predict_with_label(xi[: self._n_y], float(y_meas[0]))
-            r_eps = self._svr_eps.predict_with_label(xi[: self._n_y], float(y_meas[1]))
+            r_beta = self._svr_beta.predict_with_label(xi, float(y_meas[0]))
+            r_eps = self._svr_eps.predict_with_label(xi, float(y_meas[1]))
             is_anomaly = r_beta["is_anomaly"] or r_eps["is_anomaly"]
 
-        # 2. Update sliding window with (xi(k), y(k)) — skip anomalies
-        if not is_anomaly:
+        # 2. Update sliding window with (xi(k), y(k)) — skip anomalies and first step
+        # (first step: y_prev is None so xi is degenerate [y_meas, u] → y_meas)
+        if not is_anomaly and self._y_prev is not None:
             self._krr.update_window(xi, y_meas.copy())
 
         # 3. Fit SVR filters once window is large enough
         if not self._svr_fitted and len(self._krr._X) >= 10:
             X_win = np.array(self._krr._X)           # (n, n_y + n_u)
             Y_win = np.array(self._krr._Y)           # (n, n_y)
-            X_feat = X_win[:, : self._n_y]           # use output part as features
-            self._svr_beta.fit(X_feat, Y_win[:, 0])  # βFe channel
-            self._svr_eps.fit(X_feat, Y_win[:, 1])   # ε   channel
+            self._svr_beta.fit(X_win, Y_win[:, 0])   # βFe channel — full [y,u] features
+            self._svr_eps.fit(X_win, Y_win[:, 1])    # ε   channel — full [y,u] features
             self._svr_fitted = True
 
         # 4. Shared Gram matrix + KRR forecast + GP variance
