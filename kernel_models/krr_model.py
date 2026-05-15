@@ -43,10 +43,12 @@ class KRRModel:
         self._alpha = K_inv @ Y        # (n, n_out)
 
     def predict_horizon(self, xi: np.ndarray, Np: int) -> np.ndarray:
-        """Return nominal output forecast over horizon Np.
+        """Return nominal output forecast over horizon Np via recurrent roll-out.
 
-        Naïve multi-step: uses the same regressor xi for each step
-        (proper recurrent roll-out requires the predictor module).
+        Regressor convention: xi = [y_prev (n_out,), u_prev (n_u,)].
+        Roll-out: at each step the KRR output becomes y_prev for the next step
+        while u_prev is held constant (open-loop prediction — no future control
+        increments are assumed here; QPSolver applies the gain correction on top).
 
         Returns shape (Np, n_out).
         """
@@ -57,9 +59,19 @@ class KRRModel:
         if self._alpha is None:
             n_out = self._Y[0].shape[0]
             return np.zeros((Np, n_out))
-        k_vec = self._gram.kernel_vector(xi)   # (n,)
-        y_hat = k_vec @ self._alpha            # (n_out,)
-        return np.tile(y_hat, (Np, 1))
+
+        n_out = self._Y[0].shape[0]
+        # Split xi into output and input parts
+        u_part = xi[n_out:]   # control part held constant during roll-out
+        xi_cur = xi.copy()
+        horizon = np.empty((Np, n_out))
+        for i in range(Np):
+            k_vec = self._gram.kernel_vector(xi_cur)  # (n,)
+            y_hat = k_vec @ self._alpha               # (n_out,)
+            horizon[i] = y_hat
+            # Advance regressor: replace output part with predicted output
+            xi_cur = np.concatenate([y_hat, u_part])
+        return horizon
 
     def is_ready(self) -> bool:
         return len(self._X) >= 2

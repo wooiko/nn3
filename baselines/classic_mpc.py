@@ -1,15 +1,22 @@
 """Baseline: MPC with fixed penalty matrix R₀ (no adaptation).
 
 Uses a local cvxpy QP with:
-  - quadratic output tracking term  Q_w * ||y - y_ref||²
+  - quadratic output tracking term  Q_w * ||y_hat(i) - y_ref||²
   - quadratic input penalty term    R₀ * ||Δu||²
   - box constraints on u and Δu from object_config / config_global
+
+The predicted output at step i along the horizon is:
+    y_hat(i) = y_meas + G @ Σ_{j=0}^{i} Δu_j
+where G (n_y × n_u) is an incremental gain matrix (cfg: io_gain scalar).
+This makes the tracking cost depend on Δu so the QP actually drives the
+output toward the setpoint.
 
 Parameters from cfg (config_global.yaml merged with object_config.yaml):
     R0          : float — diagonal element of fixed penalty matrix R₀
     Np          : int   — prediction horizon
     Nc          : int   — control horizon (≤ Np)
     delta_u_max : float — max per-step control increment
+    io_gain     : float — incremental output-input gain scale (default 1.0)
     B_min_dom, B_max_dom, Q_min_dom, Q_max_dom, rho_min_dom, rho_max_dom : control bounds
 """
 import time
@@ -42,12 +49,18 @@ class ClassicMPC:
             cfg["Q_max_dom"],
         ], dtype=float)
 
-        # Normalize rho to same scale as B and Q for numerics
         self._n_u = 3
         self._n_y = 2
 
         self._u_prev = (self._u_min + self._u_max) / 2.0
         self._Q_w = np.eye(self._n_y)  # output weight (identity)
+
+        # Incremental gain G (n_y × n_u): ∂y/∂u approximation at operating point.
+        io_gain = float(cfg.get("io_gain") or 1.0)
+        self._G = np.zeros((self._n_y, self._n_u))
+        self._G[0, 0] = io_gain  # βFe sensitive to B
+        self._G[1, 0] = io_gain  # ε   sensitive to B
+
         self._log: list[dict] = []
 
     def reset(self, u_init: np.ndarray | None = None) -> None:
@@ -61,7 +74,7 @@ class ClassicMPC:
         """Compute optimal control action.
 
         Args:
-            y_meas : current output measurement (n_y,) — used as one-step prediction
+            y_meas : current output measurement (n_y,) — used as base prediction
             y_ref  : reference setpoint (n_y,)
 
         Returns:
@@ -70,25 +83,20 @@ class ClassicMPC:
         t0 = time.perf_counter()
         n_u, Nc = self._n_u, self._Nc
         R = self._R0 * np.eye(n_u)
+        G = self._G  # (n_y, n_u)
 
-        # Decision variable: control increments Δu over Nc steps
         delta_u = cp.Variable((Nc, n_u))
-        u_seq = []
-        u_k = self._u_prev.copy()
-        for i in range(Nc):
-            u_k = u_k + delta_u[i]
-            u_seq.append(u_k)
-
-        # Simplified prediction: treat y constant = y_meas (open-loop placeholder)
-        # The tracking cost is computed at each step of the horizon
         cost = 0.0
         constraints = []
         u_cur = self._u_prev.copy()
         for i in range(Nc):
             du_i = delta_u[i]
             u_cur = u_cur + du_i
-            e = y_meas - y_ref  # tracking error (constant over horizon)
-            cost += cp.quad_form(e, self._Q_w) + cp.quad_form(du_i, R)
+            # Predicted output at step i: y_meas + G @ (sum of Δu up to step i)
+            delta_u_cum_i = cp.sum(delta_u[:i + 1], axis=0)
+            y_hat_i = y_meas + G @ delta_u_cum_i
+            e_i = y_hat_i - y_ref
+            cost += cp.quad_form(e_i, self._Q_w) + cp.quad_form(du_i, R)
             constraints += [
                 u_cur >= self._u_min,
                 u_cur <= self._u_max,
