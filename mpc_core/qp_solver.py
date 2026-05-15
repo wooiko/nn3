@@ -6,6 +6,9 @@ Checks feasibility every step; logs solve status, objective value, and wall time
 Parameters from cfg:
     R0, Np, Nc, delta_u_max : see ClassicMPC
     B/rho/Q bounds
+    io_gain : float or None — incremental output-input gain scalar (dy/du scale).
+              Used to build the linear prediction model y(k+i) ≈ y_pred(k+i) + G @ Σ Δu.
+              Default 1.0 if not provided.
 """
 import time
 import numpy as np
@@ -16,7 +19,14 @@ class QPSolver:
     """cvxpy-based QP solver for one MPC step.
 
     Minimises:
-        sum_{i=0}^{Nc-1} [ e'Q_w e + Δu_i' R Δu_i ]
+        sum_{i=0}^{Nc-1} [ e(i)'Q_w e(i) + Δu_i' R Δu_i ]
+    where
+        e(i) = y_pred_horizon[i] + G @ cumsum(Δu)[i] - y_ref
+        G    : (n_y × n_u) incremental gain matrix (from cfg or identity*io_gain)
+
+    This ensures the tracking term depends on the optimisation variable Δu,
+    so the solver can drive the predicted output toward the setpoint.
+
     subject to:
         u_min ≤ u_k ≤ u_max   for each step
         |Δu_i| ≤ Δu_max       element-wise
@@ -40,17 +50,34 @@ class QPSolver:
         self._n_u = 3
         self._n_y = 2
         self._Q_w = np.eye(self._n_y)  # output tracking weight
+
+        # Incremental gain G (n_y × n_u): approximates ∂y/∂u at operating point.
+        # Populated by set_gain(); defaults to scaled identity until first update.
+        io_gain = float(cfg.get("io_gain") or 1.0)
+        self._G = np.zeros((self._n_y, self._n_u))
+        # Map each output to its most influential input (B→βFe, B→ε)
+        self._G[0, 0] = io_gain  # βFe sensitive to B
+        self._G[1, 0] = io_gain  # ε   sensitive to B
+
         self._log: list[dict] = []
 
+    def set_gain(self, G: np.ndarray) -> None:
+        """Update the incremental gain matrix G (n_y × n_u) from outside (e.g. numerical Jacobian)."""
+        self._G = np.array(G, dtype=float)
+
     def solve(self, y_pred: np.ndarray, y_ref: np.ndarray, u_prev: np.ndarray,
-              R: np.ndarray) -> dict:
+              R: np.ndarray,
+              y_pred_horizon: np.ndarray | None = None) -> dict:
         """Solve QP and return optimal first control increment applied.
 
         Args:
-            y_pred : predicted output at current step (n_y,)
-            y_ref  : reference setpoint (n_y,)
-            u_prev : control at previous step (n_u,)
-            R      : penalty matrix (n_u × n_u)
+            y_pred          : predicted output at step k (n_y,) — used as y_pred_horizon[0]
+                              when y_pred_horizon is not supplied.
+            y_ref           : reference setpoint (n_y,)
+            u_prev          : control at previous step (n_u,)
+            R               : penalty matrix (n_u × n_u)
+            y_pred_horizon  : optional (Nc, n_y) open-loop prediction over horizon.
+                              If None, y_pred is broadcast across all Nc steps.
 
         Returns:
             {
@@ -65,16 +92,33 @@ class QPSolver:
         """
         t0 = time.perf_counter()
         Nc = self._Nc
+        G = self._G  # (n_y, n_u)
+
+        if y_pred_horizon is None:
+            # Broadcast single-step prediction across horizon
+            y_pred_horizon = np.tile(y_pred, (Nc, 1))  # (Nc, n_y)
+        else:
+            # Use only first Nc steps; pad with last value if shorter
+            if y_pred_horizon.shape[0] < Nc:
+                pad = np.tile(y_pred_horizon[-1], (Nc - y_pred_horizon.shape[0], 1))
+                y_pred_horizon = np.vstack([y_pred_horizon, pad])
+            y_pred_horizon = y_pred_horizon[:Nc]
 
         delta_u = cp.Variable((Nc, self._n_u))
         cost = 0.0
         constraints = []
         u_cur = u_prev.copy()
-        e = y_pred - y_ref  # tracking error (constant over simplified horizon)
+        du_cumsum = cp.Variable((Nc, self._n_u))  # cumulative Δu up to step i
+
         for i in range(Nc):
             du_i = delta_u[i]
             u_cur = u_cur + du_i
-            cost += cp.quad_form(e, self._Q_w) + cp.quad_form(du_i, R)
+            # Predicted output at step i accounting for control increments
+            # y(k+i) ≈ y_pred_horizon[i] + G @ (Σ_{j=0}^{i} Δu_j)
+            delta_u_cum_i = cp.sum(delta_u[:i + 1], axis=0)  # (n_u,)
+            y_hat_i = y_pred_horizon[i] + G @ delta_u_cum_i  # (n_y,) — cvxpy expression
+            e_i = y_hat_i - y_ref
+            cost += cp.quad_form(e_i, self._Q_w) + cp.quad_form(du_i, R)
             constraints += [
                 u_cur >= self._u_min,
                 u_cur <= self._u_max,

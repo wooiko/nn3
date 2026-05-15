@@ -9,10 +9,15 @@ one-step-ahead prediction error e(k) = y_meas(k) - y_pred(k-1):
 where alpha_r is a configurable gain.  High autocorrelation (systematic
 unmodelled dynamics) → larger R → more conservative control action.
 
+The tracking cost at each horizon step is:
+    e(i) = y_meas + G @ Σ_{j=0}^{i} Δu_j - y_ref
+so the QP variable Δu actually influences the predicted output.
+
 Parameters from cfg:
     R0          : float — base penalty diagonal
     alpha_r     : float — autocorrelation gain
     window_size : int   — window for autocorrelation estimate (reused)
+    io_gain     : float — incremental output-input gain scale (default 1.0)
     Np, Nc, delta_u_max : same as ClassicMPC
     B/rho/Q bounds
 """
@@ -51,6 +56,12 @@ class PrototypeMPC:
         self._n_y = 2
         self._u_prev = (self._u_min + self._u_max) / 2.0
         self._Q_w = np.eye(self._n_y)
+
+        # Incremental gain G (n_y × n_u): ∂y/∂u approximation at operating point.
+        io_gain = float(cfg.get("io_gain") or 1.0)
+        self._G = np.zeros((self._n_y, self._n_u))
+        self._G[0, 0] = io_gain  # βFe sensitive to B
+        self._G[1, 0] = io_gain  # ε   sensitive to B
 
         # Error buffer for autocorrelation estimation
         self._error_buf: list[np.ndarray] = []
@@ -97,6 +108,7 @@ class PrototypeMPC:
 
         scale = self._autocorr_scale()
         R = self._R0 * scale * np.eye(self._n_u)
+        G = self._G  # (n_y, n_u)
 
         t0 = time.perf_counter()
         Nc = self._Nc
@@ -108,7 +120,10 @@ class PrototypeMPC:
         for i in range(Nc):
             du_i = delta_u[i]
             u_cur = u_cur + du_i
-            e_track = y_meas - y_ref
+            # Predicted output at step i: y_meas + G @ (Σ_{j=0}^{i} Δu_j)
+            delta_u_cum_i = cp.sum(delta_u[:i + 1], axis=0)
+            y_hat_i = y_meas + G @ delta_u_cum_i
+            e_track = y_hat_i - y_ref
             cost += cp.quad_form(e_track, self._Q_w) + cp.quad_form(du_i, R)
             constraints += [
                 u_cur >= self._u_min,

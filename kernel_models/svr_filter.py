@@ -66,8 +66,16 @@ class SVRFilter:
         self._svr = gs.best_estimator_
         return best
 
-    def predict(self, x: np.ndarray) -> dict:
+    def predict(self, x: np.ndarray, y_true: float | None = None) -> dict:
         """Classify one observation x (d,).
+
+        When y_true is provided the residual |y_true - SVR(x)| is used to
+        determine whether the point falls outside the ε-tube — this is the
+        correct anomaly criterion.  When y_true is None the method falls back
+        to predict_with_label using the SVR's own prediction as a stand-in
+        (i.e. tube_distance = 0, always normal), which is only useful as a
+        quick sanity check; callers that need real anomaly detection should
+        always supply y_true or call predict_with_label directly.
 
         Returns:
             {'is_anomaly': bool, 'tube_distance': float, 'reason': str}
@@ -78,15 +86,16 @@ class SVRFilter:
         if self._svr is None:
             return {"is_anomaly": False, "tube_distance": 0.0, "reason": "not_fitted"}
         x_sc = self._scaler.transform(x.reshape(1, -1))
-        y_pred = float(self._svr.predict(x_sc)[0])
-        # SVR decision function: |y_true - y_pred| - ε > 0 → anomaly
-        # Here x is a feature vector, not a label — we use the SVR prediction
-        # residual against zero (filter detects structural outliers in feature space).
-        # For label-supervised filtering: caller passes y_true alongside x.
-        tube_dist = float(np.abs(y_pred) - self._epsilon)
+        y_hat = float(self._svr.predict(x_sc)[0])
+        if y_true is not None:
+            residual = abs(y_true - y_hat)
+        else:
+            # No label available: residual is zero by definition (prediction == itself)
+            residual = 0.0
+        tube_dist = residual - self._epsilon
         is_anomaly = tube_dist > 0.0
         reason = "outside_tube" if is_anomaly else "inside_tube"
-        entry = {"is_anomaly": is_anomaly, "tube_distance": tube_dist, "reason": reason}
+        entry = {"is_anomaly": is_anomaly, "tube_distance": float(tube_dist), "reason": reason}
         self._log.append(entry)
         return entry
 
