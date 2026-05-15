@@ -1,0 +1,86 @@
+# Object model configuration -- PBM 90/250, wet magnetic separator
+# Format: parameter: value  # [STATUS] unit; source description
+
+# --- CONTROL INPUT DOMAINS (source: GOST 10512-78) ---
+
+B_min_dom: 0.065    # [GOST] Tl; GOST 10512-78, Table 1 Zmina #5 -- induktsiia na vidstani 50 mm
+B_max_dom: 0.160    # [GOST] Tl; GOST 10512-78, Table 1 Zmina #5 -- induktsiia na poverkhni barabana
+
+Q_min_dom: 105      # [GOST] t/h; GOST 10512-78, Table 1 -- produktyvnist po tverdomu
+Q_max_dom: 160      # [GOST] t/h; GOST 10512-78, Table 1
+
+rho_min_dom: 1500   # [GOST] kg/m3; GOST 10512-78, Table 3 -- pulpa dlia PBM z priamotechnoiu vannoiu
+rho_max_dom: 1550   # [GOST] kg/m3; GOST 10512-78, Table 3
+
+alpha_fe_min_dom: 0.28  # [ASSUMPTION] frac; approx for Krivyi Rih magnetite quartzite; source open question
+alpha_fe_max_dom: 0.38  # [ASSUMPTION] frac; same
+
+# --- STATIC MODEL: epsilon (extraction recovery) ---
+# Structure: eps = eps_max * (1 - exp(-k_eff * tau)) * g_rho(rho) * g_alpha(alpha_fe)
+# Ref: Rayner & Napier-Munn (2003); pbm_report_2 block 3.2.2
+
+epsilon_max: 0.98    # [ASSUMPTION] frac; max achievable recovery; to be identified
+
+k_0: 3.0             # [ASSUMPTION] --; base capture rate; to be identified (raised from 1.5 to achieve eps~0.90 at nominal)
+tau_ref: 1.0         # [ASSUMPTION] normalized; reference residence time; to be identified
+Q_ref: 130.0         # [LIT-QUAL] t/h; centre of range 105-160; pbm_report_2
+
+B_min_sat: 0.06      # [LIT-QUAL] Tl; sat_B threshold; pbm_report_2: sharp drop below 0.10-0.12; to be identified
+B_scale: 0.03        # [ASSUMPTION] Tl; saturation scale sat_B; to be identified
+
+rho_opt: 1520.0      # [ASSUMPTION] kg/m3; g_rho optimum -- midpoint of GOST range 1500-1550; to be identified
+rho_width: 60.0      # [ASSUMPTION] kg/m3; bell width g_rho; to be identified
+
+alpha_fe_ref: 0.33   # [LIT-QUAL] frac; reference Fe grade in feed; pbm_report_1
+c_alpha: 0.01        # [ASSUMPTION] 1/frac; magnetic capacity overload coeff; to be identified
+
+# --- STATIC MODEL: beta_fe (iron concentrate grade) ---
+# Structure: beta_fe = beta_fe_floor + (beta_fe_ceil - beta_fe_floor) * h_B * p_Q * p_rho + c_beta*(alpha_fe - alpha_fe_ref)
+
+beta_fe_floor: 0.58  # [LIT-QUAL] frac; lower bound of concentrate quality; pbm_report_1, pbm_report_2
+beta_fe_ceil: 0.68   # [LIT-QUAL] frac; upper bound; pbm_report_1 (TSGOK up to 68.2%), pbm_report_2 (65%+)
+
+B_opt_beta: 0.12     # [LIT-QUAL] Tl; induction at quality maximum; pbm_report_1: 0.15-0.18 Tl -- discrepancy, to be identified
+B_drop_beta: 8.0     # [ASSUMPTION] --; rate of quality drop above B_opt_beta; pbm_report_2: LIMS minor drop, but antagonism with eps requires visible fall; to be identified
+
+Q_opt_beta: 115.0    # [LIT-QUAL] t/h; weak quality maximum in Q; pbm_report_1: 110-120 t/h
+Q_width_beta: 40.0   # [ASSUMPTION] t/h; width of Q maximum (shallow); to be identified
+
+rho_drop_beta: 0.015 # [ASSUMPTION] m3/kg; rate of quality drop with rho (monotone); to be identified
+
+c_beta: 0.7          # [LIT-QUAL] frac/frac; linear coeff of alpha_fe effect on beta_fe; pbm_report_1: range 0.6-0.8
+
+# --- DYNAMIC MODEL: first-order lags + transport delay ---
+# Time constants and delays in discrete steps; sample_time converts to seconds
+# All values marked ASSUMPTION until confirmed from literature
+
+sample_time: 60      # [ASSUMPTION] s; sample period (1 min); to be confirmed from process regulations
+
+tau_beta_fe: 3       # [ASSUMPTION] steps; time constant for beta_fe lag; to be identified
+delay_beta_fe: 1     # [ASSUMPTION] steps; transport delay for beta_fe; to be identified
+
+tau_epsilon: 2       # [ASSUMPTION] steps; time constant for epsilon lag; to be identified
+delay_epsilon: 1     # [ASSUMPTION] steps; transport delay for epsilon; to be identified
+
+# --- MEASUREMENT NOISE (additive Gaussian, spec 2.2.3) ---
+
+noise_std_beta_fe: 0.002  # [ASSUMPTION] frac (~0.2% abs); sensor noise beta_fe; to be confirmed from sensor specs
+noise_std_epsilon: 0.003  # [ASSUMPTION] frac (~0.3% abs); sensor noise epsilon; to be confirmed
+
+# --- DISTURBANCE GENERATORS (spec 2.2.4) ---
+
+# alpha_fe drift
+drift_rate: 0.0002    # [ASSUMPTION] frac/step; linear drift rate of alpha_fe
+drift_amplitude: 0.04 # [ASSUMPTION] frac; max drift amplitude
+
+# Step change
+step_magnitude: 0.03  # [ASSUMPTION] frac; magnitude of step change in alpha_fe
+step_time: 100        # [ASSUMPTION] steps; default time of step change
+
+# Impulse spike
+impulse_magnitude: 0.08   # [ASSUMPTION] frac; amplitude of impulse spike in alpha_fe
+impulse_duration: 2       # [ASSUMPTION] steps; duration of impulse
+impulse_times: [50, 150, 250]  # [ASSUMPTION] steps; default impulse times
+
+# Random seed for reproducibility (spec: all RNGs initialized from config)
+random_seed: 42       # [CONFIG] --; seed for reproducibility (run_all.py)

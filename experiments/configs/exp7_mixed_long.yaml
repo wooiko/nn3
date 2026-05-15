@@ -1,0 +1,31 @@
+# EXP-7: Long mixed-disturbance run
+# Purpose: integral performance assessment under realistic operating conditions
+
+scenario_id: EXP-7
+description: "Long run (600 steps) with drift + step + impulse disturbances; all controllers"
+n_seeds: 30
+seed_base: 500
+controllers: [full, classic_mpc, prototype_mpc]
+n_steps: 600
+
+disturbance:
+  type: mixed
+  # Drift phase
+  drift_rate: 0.0002
+  drift_amplitude: 0.03
+  # Step at t=200
+  step_magnitude: 0.02
+  step_time: 200
+  # Impulse bursts
+  impulse_magnitude: 0.06
+  impulse_duration: 2
+  impulse_times: [100, 300, 500]
+
+noise:
+  enabled: true
+
+reference:
+  beta_fe: 0.650
+  epsilon: 0.920
+
+horizon: {}

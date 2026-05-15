@@ -1,0 +1,24 @@
+# EXP-6: Gram matrix benchmark — shared vs two separate inversions
+# Purpose: verify correctness (identical results ±rounding) and measure speedup
+
+scenario_id: EXP-6
+description: "Shared Gram matrix vs per-module inversions: correctness + timing"
+n_seeds: 1
+seed_base: 42
+controllers: [full]   # only adaptive controller; baseline not needed for timing
+n_steps: 100
+
+disturbance:
+  type: none
+
+noise:
+  enabled: true
+
+gram_benchmark:
+  enabled: true       # enables parallel inversion count logging in exp_runner
+
+reference:
+  beta_fe: 0.650
+  epsilon: 0.920
+
+horizon: {}

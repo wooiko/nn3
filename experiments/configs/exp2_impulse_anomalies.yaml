@@ -1,0 +1,24 @@
+# EXP-2: Impulse anomalies in measurements
+# Purpose: verify SVR filter — anomalies must not enter the training window
+
+scenario_id: EXP-2
+description: "Impulse measurement spikes; SVR filter must block anomalies"
+n_seeds: 30
+seed_base: 100
+controllers: [full, classic_mpc, prototype_mpc]
+n_steps: 300
+
+disturbance:
+  type: impulse
+  magnitude: 0.08     # [frac]; object_config: impulse_magnitude
+  duration: 2         # steps; object_config: impulse_duration
+  times: [50, 100, 150, 200, 250]
+
+noise:
+  enabled: true
+
+reference:
+  beta_fe: 0.650
+  epsilon: 0.920
+
+horizon: {}

@@ -1,0 +1,23 @@
+# EXP-3: Domain drift — alpha_fe drifts outside training domain
+# Purpose: verify GP supervisor triggers conservative mode when process leaves known domain
+
+scenario_id: EXP-3
+description: "alpha_fe linear drift beyond training domain; GP must switch to conservative"
+n_seeds: 30
+seed_base: 200
+controllers: [full, classic_mpc, prototype_mpc]
+n_steps: 400
+
+disturbance:
+  type: drift
+  rate: 0.0002        # [frac/step]; object_config: drift_rate
+  amplitude: 0.04     # [frac]; object_config: drift_amplitude
+
+noise:
+  enabled: true
+
+reference:
+  beta_fe: 0.650
+  epsilon: 0.920
+
+horizon: {}

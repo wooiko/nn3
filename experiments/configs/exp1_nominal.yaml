@@ -1,0 +1,21 @@
+# EXP-1: Nominal operation — no disturbances
+# Purpose: baseline functionality; no degradation vs classic/prototype MPC
+
+scenario_id: EXP-1
+description: "Nominal steady-state, no disturbances, fixed alpha_fe"
+n_seeds: 1          # deterministic: only measurement noise with fixed seed
+seed_base: 42
+controllers: [full, classic_mpc, prototype_mpc]
+n_steps: 200        # simulation steps
+
+disturbance:
+  type: none
+
+noise:
+  enabled: true     # measurement noise from object_config (std_beta_fe, std_epsilon)
+
+reference:
+  beta_fe: 0.650    # target concentrate grade [frac]
+  epsilon: 0.920    # target recovery [frac]
+
+horizon: {}         # use values from config_global (Np, Nc)
