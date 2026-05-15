@@ -108,15 +108,13 @@ class QPSolver:
         cost = 0.0
         constraints = []
         u_cur = u_prev.copy()
-        du_cumsum = cp.Variable((Nc, self._n_u))  # cumulative Δu up to step i
 
         for i in range(Nc):
             du_i = delta_u[i]
             u_cur = u_cur + du_i
-            # Predicted output at step i accounting for control increments
             # y(k+i) ≈ y_pred_horizon[i] + G @ (Σ_{j=0}^{i} Δu_j)
-            delta_u_cum_i = cp.sum(delta_u[:i + 1], axis=0)  # (n_u,)
-            y_hat_i = y_pred_horizon[i] + G @ delta_u_cum_i  # (n_y,) — cvxpy expression
+            # u_cur accumulates Δu incrementally, so u_cur - u_prev = Σ Δu_j
+            y_hat_i = y_pred_horizon[i] + G @ (u_cur - u_prev)  # (n_y,) — cvxpy expression
             e_i = y_hat_i - y_ref
             cost += cp.quad_form(e_i, self._Q_w) + cp.quad_form(du_i, R)
             constraints += [
