@@ -132,3 +132,48 @@ class MPCController:
         self._log.append(entry)
         self._step_count += 1
         return u_opt
+
+
+class MPCControllerNoSVR(MPCController):
+    """Ablation variant: SVR filter disabled — all observations accepted as valid."""
+
+    def step(self, y_meas: np.ndarray, y_ref: np.ndarray,
+             u_meas: np.ndarray | None = None) -> np.ndarray:
+        u_context = u_meas if u_meas is not None else self._u_prev.copy()
+        xi = np.concatenate([y_meas, u_context])
+
+        # No SVR filtering — always accept
+        self._krr.update_window(xi, y_meas.copy())
+
+        # Fit SVR if window ready (kept for API consistency, but never queried)
+        if not self._svr_fitted and len(self._krr._X) >= 10:
+            self._svr_fitted = True
+
+        if self._krr.is_ready():
+            X_win = np.array(self._krr._X)
+            self._gram.compute(X_win)
+            self._gp.update(X_win)
+            y_pred_horizon = self._predictor.predict(xi, self._krr, self._Np)
+            sigma2_horizon = self._gp.variance_horizon(xi, self._Np)
+            sigma2 = float(sigma2_horizon.mean())
+            y_pred = y_pred_horizon[0]
+        else:
+            y_pred = y_meas.copy()
+            sigma2 = 1.0
+
+        R, self._mode = self._r_adapt.compute(sigma2, self._mode)
+        result = self._qp.solve(y_pred, y_ref, self._u_prev, R)
+        u_opt = result["u_opt"]
+        self._u_prev = u_opt.copy()
+
+        self._log.append({
+            "step": self._step_count,
+            "is_anomaly": False,
+            "sigma2": sigma2,
+            "mode": self._mode,
+            "u_opt": u_opt.copy(),
+            "y_pred": y_pred.copy(),
+            "qp_status": result["status"],
+        })
+        self._step_count += 1
+        return u_opt

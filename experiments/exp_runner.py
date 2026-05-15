@@ -9,13 +9,14 @@ from object_model.dynamic_model import DynamicModel
 from object_model import disturbances as dist_fns
 from baselines.classic_mpc import ClassicMPC
 from baselines.prototype_mpc import PrototypeMPC
-from mpc_core.mpc_controller import MPCController
+from mpc_core.mpc_controller import MPCController, MPCControllerNoSVR
 from metrics.kpi import compute_all
 from metrics.statistics import aggregate_kpis
 
 
 _CONTROLLERS = {
     "full": MPCController,
+    "full_no_svr": MPCControllerNoSVR,
     "classic_mpc": ClassicMPC,
     "prototype_mpc": PrototypeMPC,
 }
